@@ -1076,6 +1076,8 @@ function OutreachPackSection({
         />
       </div>
 
+      <CallFlowPanel pack={pack} lead={lead} />
+
       <div className="flex flex-col gap-4 rounded-[10px] border border-[var(--ink)] bg-white p-4 text-[var(--ink)] shadow-[4px_4px_0_var(--ink)] sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           <button
@@ -1358,6 +1360,91 @@ function CallbookProductPanel({ lead }: { lead: Lead }) {
           <ProductMapChip key={entry.feature} entry={entry} />
         ))}
       </div>
+    </div>
+  );
+}
+
+function CallFlowPanel({
+  pack,
+  lead
+}: {
+  pack: OutreachPack | null;
+  lead: Lead;
+}) {
+  if (!pack) {
+    return (
+      <div className="rounded-[10px] border border-dashed border-[var(--ink)] bg-white p-5 text-[var(--ink)] shadow-[4px_4px_0_var(--ink)]">
+        <p className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-[var(--muted)]">
+          Call flow - what the AI agent says when {lead.company} picks up
+        </p>
+        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+          Generate the pack to see the structured call plan: opener, hook, pain probe, product anchor, soft ask, and the top objections the AE should be ready for.
+        </p>
+      </div>
+    );
+  }
+
+  const flow = pack.call_flow;
+  const steps: Array<{ key: string; label: string; body: string }> = [
+    { key: "opener", label: "01 - Opener", body: flow.opener },
+    { key: "hook", label: "02 - Hook (CFPB receipt)", body: flow.hook },
+    { key: "pain_probe", label: "03 - Pain probe", body: flow.pain_probe },
+    { key: "product_anchor", label: "04 - Product anchor", body: flow.product_anchor },
+    { key: "soft_ask", label: "05 - Soft ask", body: flow.soft_ask }
+  ];
+
+  return (
+    <div className="rounded-[10px] border border-[var(--ink)] bg-white p-5 text-[var(--ink)] shadow-[4px_4px_0_var(--ink)]">
+      <div className="flex flex-col gap-2 border-b border-[var(--ink)] pb-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-[var(--muted)]">
+            Call flow - the structure the voice agent follows
+          </p>
+          <p className="mt-1 text-base font-bold leading-6">
+            What {lead.company} hears when the call connects, step by step.
+          </p>
+        </div>
+        <span className="w-fit rounded-md bg-[var(--ink)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-white">
+          plays next via voice pitch
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+        {steps.map((step) => (
+          <div
+            key={step.key}
+            className="flex flex-col gap-2 rounded-md border border-[var(--ink)] bg-[var(--paper)] p-3"
+          >
+            <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--rose)]">
+              {step.label}
+            </span>
+            <p className="text-sm leading-5">{step.body}</p>
+          </div>
+        ))}
+      </div>
+
+      {flow.objection_handlers.length > 0 ? (
+        <div className="mt-5">
+          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--muted)]">
+            Objection handlers
+          </p>
+          <div className="mt-2 grid gap-3 md:grid-cols-3">
+            {flow.objection_handlers.map((entry, index) => (
+              <div
+                key={`${entry.objection}-${index}`}
+                className="rounded-md border border-[var(--ink)] bg-white p-3"
+              >
+                <p className="font-mono text-[11px] font-bold text-[var(--ink)]">
+                  &quot;{entry.objection}&quot;
+                </p>
+                <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
+                  {entry.response}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

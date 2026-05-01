@@ -134,11 +134,21 @@ For every lead, ComplaintSignal computes a per-feature match rate from the borro
   "linkedin_dm":   "...",
   "call_script_30s": "...",
   "voice_pitch_script": "...",
-  "crm_note": "..."
+  "crm_note": "...",
+  "call_flow": {
+    "opener": "...",
+    "hook": "...",
+    "pain_probe": "...",
+    "product_anchor": "...",
+    "soft_ask": "...",
+    "objection_handlers": [
+      { "objection": "...", "response": "..." }
+    ]
+  }
 }
 ```
 
-The `voice_pitch_script` is what gets sent to ElevenLabs and played in the demo.
+The `voice_pitch_script` is what gets sent to ElevenLabs and played in the demo. The `call_flow` is the structured plan the voice agent follows step-by-step — rendered as its own panel above the voice pitch button so the audience sees the *structure* the audio is executing.
 
 ---
 

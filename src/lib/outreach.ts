@@ -38,7 +38,20 @@ const OutreachPackSchema = z.object({
   linkedin_dm: z.string(),
   call_script_30s: z.string(),
   voice_pitch_script: z.string(),
-  crm_note: z.string()
+  crm_note: z.string(),
+  call_flow: z.object({
+    opener: z.string(),
+    hook: z.string(),
+    pain_probe: z.string(),
+    product_anchor: z.string(),
+    soft_ask: z.string(),
+    objection_handlers: z.array(
+      z.object({
+        objection: z.string(),
+        response: z.string()
+      })
+    )
+  })
 });
 
 let anthropicClient: Anthropic | null = null;
@@ -92,7 +105,7 @@ export async function generateOutreachPack(lead: Lead): Promise<{
 
     const userPayload = {
       instructions:
-        "Generate the outbound pack for this lead. Lead with the strongest borrower-voice evidence (contactability > multichannel > compliance > volume). Tie every channel back to a Callbook product feature. The voice_pitch_script will be rendered by an AI voice agent; keep it conversational, under 35 seconds, and end with a soft ask.",
+        "Generate the outbound pack for this lead. Lead with the strongest borrower-voice evidence (contactability > multichannel > compliance > volume). Tie every channel back to a Callbook product feature. The voice_pitch_script will be rendered by an AI voice agent; keep it conversational, under 35 seconds, and end with a soft ask. The call_flow is the structured plan an AE follows when this prospect actually picks up: opener (one short greeting line), hook (reference the literal CFPB complaint pattern), pain_probe (one diagnostic question that surfaces the borrower-contact gap), product_anchor (the single Callbook feature this lead most needs - multichannel, contactability, SOC 2, or voice quality), soft_ask (15-minute compare next week), and objection_handlers (3 entries covering the most likely pushbacks: 'we already have a vendor', 'compliance review', 'send info first' or similar - keep responses under 2 sentences each).",
       lead: {
         company: lead.company,
         segment: lead.segment,
@@ -209,7 +222,28 @@ export function templateOutreachPack(
     linkedin_dm: `${lead.company} has a fresh public CFPB pattern: ${lead.whyNow.split(".")[0]}. Callbook AI's multichannel collections platform (voice + WhatsApp + SMS + email, SOC 2) is built to close exactly that gap. Open to a quick compare?`,
     call_script_30s: `Hi, this is Callbook. I noticed ${lead.company} has ${lead.recentCount.toLocaleString()} CFPB complaints in 90 days, and the borrower narratives keep mentioning failed calls and unreached messages. Callbook is the AI voice + WhatsApp + SMS + email orchestration platform behind 50-70% contactability for collections, with SOC 2 and full call recording out of the box. Is improving right-party contact on your team's roadmap this quarter?`,
     voice_pitch_script: `Hi - this is Callbook. Quick reason for the call. We pulled CFPB complaints for ${lead.company} and the borrower-voice pattern is clear: missed calls, dead voicemails, and unanswered messages. Callbook is the AI collections platform with voice agents indistinguishable from humans, plus WhatsApp, SMS, and email orchestration. We help lenders like ${lead.company} push right-party contactability into the 50 to 70 percent band, with SOC 2 and full call recording on day one. Worth a 15-minute conversation this week?`,
-    crm_note: `${lead.company} - lead score ${lead.leadScore}, Callbook fit ${lead.callbookFit}. ${lead.whyNow} Top product map: ${lead.productMap.entries.slice(0, 2).map((e) => e.label).join(" | ")}. Persona: ${lead.decisionMaker}.`
+    crm_note: `${lead.company} - lead score ${lead.leadScore}, Callbook fit ${lead.callbookFit}. ${lead.whyNow} Top product map: ${lead.productMap.entries.slice(0, 2).map((e) => e.label).join(" | ")}. Persona: ${lead.decisionMaker}.`,
+    call_flow: {
+      opener: `Hi, this is Callbook calling for the ${lead.decisionMaker} at ${lead.company}.`,
+      hook: `We pulled the public CFPB record for ${lead.company} - ${lead.recentCount.toLocaleString()} complaints in the last 90 days, with borrowers explicitly mentioning failed calls, voicemails, and unanswered messages.`,
+      pain_probe: `Curious - is borrower right-party contact rate something your servicing team is actively trying to lift this quarter, or is the focus elsewhere?`,
+      product_anchor: productLabel,
+      soft_ask: `Worth a 15-minute compare next week on where Callbook is taking that load off teams in your exact tier?`,
+      objection_handlers: [
+        {
+          objection: "We already use a voice or dialer vendor.",
+          response: `Most teams we work with had one. Callbook is voice plus WhatsApp, SMS, and email under one orchestration layer - not just dialing. Open to comparing 50-70% contactability against what you're seeing today?`
+        },
+        {
+          objection: "Compliance / legal would need to review first.",
+          response: `Makes sense - we're SOC 2 and ship full call recording and audit trail by default, so the compliance package usually clears in one review cycle. Happy to send it ahead of the meeting.`
+        },
+        {
+          objection: "Send me some info first.",
+          response: `Will do - I'll send a one-page brief tied to the public CFPB pattern we saw on ${lead.company}, and a calendar link for a 15-minute compare. If the brief doesn't land, no follow-up.`
+        }
+      ]
+    }
   };
 }
 

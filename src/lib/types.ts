@@ -100,6 +100,20 @@ export interface LeadDataset {
   leads: Lead[];
 }
 
+export interface CallFlowObjection {
+  objection: string;
+  response: string;
+}
+
+export interface CallFlow {
+  opener: string;
+  hook: string;
+  pain_probe: string;
+  product_anchor: string;
+  soft_ask: string;
+  objection_handlers: CallFlowObjection[];
+}
+
 export interface OutreachPack {
   lead_score: number;
   why_now: string;
@@ -114,4 +128,5 @@ export interface OutreachPack {
   call_script_30s: string;
   voice_pitch_script: string;
   crm_note: string;
+  call_flow: CallFlow;
 }
