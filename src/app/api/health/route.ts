@@ -10,7 +10,7 @@ export async function GET() {
     env: {
       apify: Boolean(process.env.APIFY_API_TOKEN),
       apifyActor: process.env.APIFY_GOOGLE_SEARCH_ACTOR || null,
-      openai: Boolean(process.env.OPENAI_API_KEY),
+      anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
       elevenLabs: Boolean(process.env.ELEVENLABS_API_KEY),
       elevenLabsVoiceId: Boolean(process.env.ELEVENLABS_VOICE_ID)
     }

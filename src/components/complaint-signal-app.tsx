@@ -30,7 +30,7 @@ type DatasetPayload = LeadDataset & {
 
 type PackApiResponse = {
   pack: OutreachPack;
-  source: "openai" | "openai+apify" | "template";
+  source: "claude" | "claude+apify" | "template";
   model: string;
   warning?: string;
 };
@@ -1024,6 +1024,13 @@ function OutreachPackSection({
             source: {packSource}
           </div>
         ) : null}
+        {!pack ? (
+          <div className="mt-4 grid gap-3 border-t border-[var(--ink)] pt-4 sm:grid-cols-3">
+            <DemoCue label="demo move" value="Click Generate pack live" />
+            <DemoCue label="source" value="CFPB receipt plus Apify web evidence" />
+            <DemoCue label="output" value="Email, DM, call script, CRM note" />
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -1032,6 +1039,7 @@ function OutreachPackSection({
           tab="email"
           activeTab={packTab}
           pack={pack}
+          loadingPack={loadingPack}
           copiedKey={copiedKey}
           onChangeTab={onChangeTab}
           onCopy={onCopy}
@@ -1041,6 +1049,7 @@ function OutreachPackSection({
           tab="linkedin"
           activeTab={packTab}
           pack={pack}
+          loadingPack={loadingPack}
           copiedKey={copiedKey}
           onChangeTab={onChangeTab}
           onCopy={onCopy}
@@ -1050,6 +1059,7 @@ function OutreachPackSection({
           tab="call"
           activeTab={packTab}
           pack={pack}
+          loadingPack={loadingPack}
           copiedKey={copiedKey}
           onChangeTab={onChangeTab}
           onCopy={onCopy}
@@ -1059,6 +1069,7 @@ function OutreachPackSection({
           tab="crm"
           activeTab={packTab}
           pack={pack}
+          loadingPack={loadingPack}
           copiedKey={copiedKey}
           onChangeTab={onChangeTab}
           onCopy={onCopy}
@@ -1100,6 +1111,7 @@ function PackCard({
   tab,
   activeTab,
   pack,
+  loadingPack,
   copiedKey,
   onChangeTab,
   onCopy
@@ -1108,11 +1120,13 @@ function PackCard({
   tab: PackTab;
   activeTab: PackTab;
   pack: OutreachPack | null;
+  loadingPack: boolean;
   copiedKey: string | null;
   onChangeTab: (tab: PackTab) => void;
   onCopy: (key: string, value: string) => void;
 }) {
   const text = getPackText(pack, tab);
+  const preview = getPackPreview(tab);
 
   return (
     <article
@@ -1141,10 +1155,31 @@ function PackCard({
       {tab === "email" && pack ? (
         <p className="mt-4 text-sm font-bold">{pack.email.subject}</p>
       ) : null}
-      <p className="mt-4 min-h-36 whitespace-pre-wrap text-sm leading-6 text-[var(--muted)]">
-        {pack ? text : `Generate the outreach pack to populate ${title.toLowerCase()}.`}
-      </p>
+      {pack ? (
+        <p className="mt-4 min-h-36 whitespace-pre-wrap text-sm leading-6 text-[var(--muted)]">{text}</p>
+      ) : (
+        <div className="mt-4 min-h-36 rounded-md border border-dashed border-[var(--ink)] bg-[var(--paper)] p-4">
+          <div className="inline-flex items-center gap-2 rounded border border-[var(--ink)] bg-white px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--muted)]">
+            {loadingPack ? <Loader2 size={12} className="animate-spin" /> : <Database size={12} />}
+            {loadingPack ? "building from live evidence" : "waiting for Apify evidence"}
+          </div>
+          <p className="mt-4 text-base font-black text-[var(--ink)]">{preview.heading}</p>
+          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{preview.body}</p>
+          <p className="mt-4 font-mono text-xs font-bold text-[var(--rose)]">
+            {loadingPack ? "Searching and drafting now." : `Generate pack to populate ${title.toLowerCase()}.`}
+          </p>
+        </div>
+      )}
     </article>
+  );
+}
+
+function DemoCue({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--muted)]">{label}</p>
+      <p className="mt-1 text-sm font-black text-[var(--ink)]">{value}</p>
+    </div>
   );
 }
 
@@ -1390,16 +1425,44 @@ function getPackText(pack: OutreachPack | null, tab: PackTab): string {
   return pack.crm_note;
 }
 
+function getPackPreview(tab: PackTab): { heading: string; body: string } {
+  if (tab === "email") {
+    return {
+      heading: "A sourced AE email, not generic nurture copy.",
+      body: "Shows the complaint spike, ties it to the exact pain Callbook solves, and gives the rep a direct meeting ask."
+    };
+  }
+
+  if (tab === "linkedin") {
+    return {
+      heading: "A short DM for the named operator.",
+      body: "Uses the same public signal, but compresses the message into a human opener that can be sent before email."
+    };
+  }
+
+  if (tab === "call") {
+    return {
+      heading: "A 30-second talk track for first contact.",
+      body: "Gives the rep a crisp opener, the evidence line, and one question that turns public pain into discovery."
+    };
+  }
+
+  return {
+    heading: "A paste-ready CRM note for handoff.",
+    body: "Summarizes why this account is hot, what evidence was used, and the next action the AE should take."
+  };
+}
+
 function formatPackSource(
   source: PackApiResponse["source"],
   model: string
 ): string {
-  if (source === "openai") {
-    return `${model} (LLM)`;
+  if (source === "claude") {
+    return `${model} (Claude)`;
   }
 
-  if (source === "openai+apify") {
-    return `${model} (LLM + Apify search evidence)`;
+  if (source === "claude+apify") {
+    return `${model} (Claude + Apify search evidence)`;
   }
 
   return "deterministic template";

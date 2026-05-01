@@ -1,4 +1,6 @@
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { z } from "zod";
 import {
   fetchLeadSearchEvidence,
   hasApifyConfig,
@@ -6,7 +8,8 @@ import {
 } from "./apify";
 import type { Lead, OutreachPack } from "./types";
 
-const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
+const DEFAULT_MODEL = "claude-opus-4-7";
+const MAX_TOKENS = 4096;
 
 const CALLBOOK_POSITIONING = `Callbook AI is an AI-powered collections platform.
 - Voice agents indistinguishable from humans, plus WhatsApp, SMS, and email channels under one orchestration layer.
@@ -16,11 +19,38 @@ const CALLBOOK_POSITIONING = `Callbook AI is an AI-powered collections platform.
 - Buyer is typically VP Collections, Head of Servicing, or VP Customer / Contact Center Operations.
 - Competitive set: Salient, Prodigal, Cresta, Skit.ai, WIZ.ai. Differentiation is multichannel orchestration + voice quality + SOC 2.`;
 
-let openaiClient: OpenAI | null = null;
+const SYSTEM_PROMPT = `You are a senior B2B outbound writer for Callbook AI's GTM team. You write evidence-grounded outreach for fintech lenders. Every claim must trace to a CFPB datapoint or a public search snippet provided in the user payload. Prefer specifics (numbers, borrower phrases) over adjectives. Reference Callbook's actual product features (multichannel orchestration, 50-70% contactability, SOC 2 + audit trail, voice quality). Never invent statistics. Return only JSON matching the provided schema.
+
+${CALLBOOK_POSITIONING}`;
+
+const OutreachPackSchema = z.object({
+  lead_score: z.number().int(),
+  why_now: z.string(),
+  pain_hypothesis: z.string(),
+  callbook_angle: z.string(),
+  decision_maker: z.string(),
+  email: z.object({
+    subject: z.string(),
+    body: z.string()
+  }),
+  linkedin_dm: z.string(),
+  call_script_30s: z.string(),
+  voice_pitch_script: z.string(),
+  crm_note: z.string()
+});
+
+let anthropicClient: Anthropic | null = null;
+
+function getClient(apiKey: string): Anthropic {
+  if (!anthropicClient) {
+    anthropicClient = new Anthropic({ apiKey });
+  }
+  return anthropicClient;
+}
 
 export async function generateOutreachPack(lead: Lead): Promise<{
   pack: OutreachPack;
-  source: "openai" | "openai+apify" | "template";
+  source: "claude" | "claude+apify" | "template";
   model: string;
   warning?: string;
 }> {
@@ -38,8 +68,8 @@ export async function generateOutreachPack(lead: Lead): Promise<{
     }
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const model = process.env.ANTHROPIC_MODEL || DEFAULT_MODEL;
 
   if (!apiKey) {
     return {
@@ -48,124 +78,100 @@ export async function generateOutreachPack(lead: Lead): Promise<{
       model,
       warning:
         apifyWarning ??
-        "OPENAI_API_KEY is not set; returned deterministic template output."
+        "ANTHROPIC_API_KEY is not set; returned deterministic template output."
     };
   }
 
   try {
-    const client = getOpenAIClient(apiKey);
-    const response = await client.responses.create({
+    const client = getClient(apiKey);
+
+    const userPayload = {
+      instructions:
+        "Generate the outbound pack for this lead. Lead with the strongest borrower-voice evidence (contactability > multichannel > compliance > volume). Tie every channel back to a Callbook product feature. The voice_pitch_script will be rendered by an AI voice agent; keep it conversational, under 35 seconds, and end with a soft ask.",
+      lead: {
+        company: lead.company,
+        segment: lead.segment,
+        decision_maker: lead.decisionMaker,
+        lead_score: lead.leadScore,
+        callbook_fit: lead.callbookFit,
+        recent_complaint_count: lead.recentCount,
+        previous_complaint_count: lead.previousCount,
+        spike_percent: lead.spikePercent,
+        top_issues: lead.issueSummary,
+        multichannel_pain_rate: lead.multichannelPainRate,
+        contactability_pain_rate: lead.contactabilityPainRate,
+        compliance_heat_rate: lead.complianceHeatRate,
+        debt_collection_share: lead.debtCollectionShare,
+        product_map: lead.productMap.entries.map((entry) => ({
+          feature: entry.feature,
+          label: entry.label,
+          match_rate: entry.matchRate,
+          evidence_phrases: entry.evidencePhrases
+        })),
+        receipt: lead.receipt
+          ? {
+              product: lead.receipt.product,
+              issue: lead.receipt.issue,
+              sub_issue: lead.receipt.subIssue,
+              narrative: lead.receipt.narrative.slice(0, 1200),
+              timely: lead.receipt.timely,
+              company_response: lead.receipt.companyResponse,
+              date_received: lead.receipt.dateReceived
+            }
+          : null
+      },
+      apify_search_evidence: apifyEvidence.slice(0, 4).map((item) => ({
+        title: item.title,
+        url: item.url,
+        description: item.description
+      }))
+    };
+
+    const response = await client.messages.parse({
       model,
-      input: [
+      max_tokens: MAX_TOKENS,
+      system: [
         {
-          role: "system",
-          content: `You are a senior B2B outbound writer for Callbook AI's GTM team. You write evidence-grounded outreach for fintech lenders. Every claim must trace to a CFPB datapoint or a public search snippet provided in the user payload. Prefer specifics (numbers, borrower phrases) over adjectives. Reference Callbook's actual product features (multichannel orchestration, 50-70% contactability, SOC 2 + audit trail, voice quality). Never invent statistics. Return only JSON matching the provided schema.\n\n${CALLBOOK_POSITIONING}`
-        },
-        {
-          role: "user",
-          content: JSON.stringify({
-            instructions:
-              "Generate the outbound pack for this lead. Lead with the strongest borrower-voice evidence (contactability > multichannel > compliance > volume). Tie every channel back to a Callbook product feature. The voice_pitch_script will be rendered by an AI voice agent; keep it conversational, under 35 seconds, and end with a soft ask.",
-            callbook_product: CALLBOOK_POSITIONING,
-            lead: {
-              company: lead.company,
-              segment: lead.segment,
-              decision_maker: lead.decisionMaker,
-              lead_score: lead.leadScore,
-              callbook_fit: lead.callbookFit,
-              recent_complaint_count: lead.recentCount,
-              previous_complaint_count: lead.previousCount,
-              spike_percent: lead.spikePercent,
-              top_issues: lead.issueSummary,
-              multichannel_pain_rate: lead.multichannelPainRate,
-              contactability_pain_rate: lead.contactabilityPainRate,
-              compliance_heat_rate: lead.complianceHeatRate,
-              debt_collection_share: lead.debtCollectionShare,
-              product_map: lead.productMap.entries.map((entry) => ({
-                feature: entry.feature,
-                label: entry.label,
-                match_rate: entry.matchRate,
-                evidence_phrases: entry.evidencePhrases
-              })),
-              receipt: lead.receipt
-                ? {
-                    product: lead.receipt.product,
-                    issue: lead.receipt.issue,
-                    sub_issue: lead.receipt.subIssue,
-                    narrative: lead.receipt.narrative.slice(0, 1200),
-                    timely: lead.receipt.timely,
-                    company_response: lead.receipt.companyResponse,
-                    date_received: lead.receipt.dateReceived
-                  }
-                : null
-            },
-            apify_search_evidence: apifyEvidence.slice(0, 4).map((item) => ({
-              title: item.title,
-              url: item.url,
-              description: item.description
-            }))
-          })
+          type: "text",
+          text: SYSTEM_PROMPT,
+          cache_control: { type: "ephemeral" }
         }
       ],
-      text: {
-        format: outreachJsonSchema
+      messages: [
+        {
+          role: "user",
+          content: JSON.stringify(userPayload)
+        }
+      ],
+      output_config: {
+        format: zodOutputFormat(OutreachPackSchema)
       }
     });
 
-    const outputText = readResponseText(response);
-    const pack = JSON.parse(outputText) as OutreachPack;
+    const parsed = response.parsed_output;
+    if (!parsed) {
+      throw new Error("Claude response did not parse against the outreach schema.");
+    }
 
     return {
-      pack,
-      source: apifyEvidence.length > 0 ? "openai+apify" : "openai",
+      pack: parsed as OutreachPack,
+      source: apifyEvidence.length > 0 ? "claude+apify" : "claude",
       model,
       warning: apifyWarning
     };
   } catch (error) {
-    const openAiWarning =
+    const claudeWarning =
       error instanceof Error
-        ? `OpenAI generation failed: ${error.message}`
-        : "OpenAI generation failed.";
+        ? `Claude generation failed: ${error.message}`
+        : "Claude generation failed.";
 
     return {
       pack: templateOutreachPack(lead, apifyEvidence),
       source: "template",
       model,
-      warning: [apifyWarning, openAiWarning].filter(Boolean).join(" ")
+      warning: [apifyWarning, claudeWarning].filter(Boolean).join(" ")
     };
   }
-}
-
-function getOpenAIClient(apiKey: string): OpenAI {
-  if (!openaiClient) {
-    openaiClient = new OpenAI({ apiKey });
-  }
-
-  return openaiClient;
-}
-
-function readResponseText(response: OpenAI.Responses.Response): string {
-  const directText = (response as { output_text?: string }).output_text;
-
-  if (directText) {
-    return directText;
-  }
-
-  const output = (response as {
-    output?: Array<{ content?: Array<{ text?: string }> }>;
-  }).output;
-
-  const text = (output ?? [])
-    .flatMap((item) => item.content ?? [])
-    .map((content) => content.text ?? "")
-    .join("")
-    .trim();
-
-  if (!text) {
-    throw new Error("OpenAI response did not include output text.");
-  }
-
-  return text;
 }
 
 export function templateOutreachPack(
@@ -174,7 +180,9 @@ export function templateOutreachPack(
 ): OutreachPack {
   const topProduct = lead.productMap.entries[0];
   const productLabel = topProduct?.label ?? "Callbook's multichannel orchestration";
-  const productLine = topProduct?.description ?? "Callbook's voice agents handle borrower follow-up, payment reminders, and routing while keeping servicing teams on exceptions.";
+  const productLine =
+    topProduct?.description ??
+    "Callbook's voice agents handle borrower follow-up, payment reminders, and routing while keeping servicing teams on exceptions.";
 
   const receiptLine = lead.receipt
     ? `A recent CFPB complaint cites ${lead.receipt.issue.toLowerCase()} in ${lead.receipt.product.toLowerCase()}.`
@@ -241,45 +249,3 @@ function trimSentence(value: string): string {
   const sliced = compact.length > 220 ? `${compact.slice(0, 217).trim()}...` : compact;
   return sliced.replace(/\.+$/, "");
 }
-
-const outreachJsonSchema = {
-  type: "json_schema",
-  name: "outreach_pack",
-  strict: true,
-  schema: {
-    type: "object",
-    additionalProperties: false,
-    required: [
-      "lead_score",
-      "why_now",
-      "pain_hypothesis",
-      "callbook_angle",
-      "decision_maker",
-      "email",
-      "linkedin_dm",
-      "call_script_30s",
-      "voice_pitch_script",
-      "crm_note"
-    ],
-    properties: {
-      lead_score: { type: "integer" },
-      why_now: { type: "string" },
-      pain_hypothesis: { type: "string" },
-      callbook_angle: { type: "string" },
-      decision_maker: { type: "string" },
-      email: {
-        type: "object",
-        additionalProperties: false,
-        required: ["subject", "body"],
-        properties: {
-          subject: { type: "string" },
-          body: { type: "string" }
-        }
-      },
-      linkedin_dm: { type: "string" },
-      call_script_30s: { type: "string" },
-      voice_pitch_script: { type: "string" },
-      crm_note: { type: "string" }
-    }
-  }
-} as const;

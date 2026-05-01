@@ -150,7 +150,7 @@ The `voice_pitch_script` is what gets sent to ElevenLabs and played in the demo.
 | API              | Next.js Route Handlers (Node runtime)    | No separate server; one deployable                             |
 | Language         | TypeScript 6                             | Strict types, structured outputs, fewer demo-day surprises     |
 | Schemas          | Zod 4                                    | Runtime validation on every API boundary                       |
-| LLM              | OpenAI (`gpt-4o-mini` default)           | Structured JSON outputs, low latency                           |
+| LLM              | **Anthropic Claude** (`claude-opus-4-7`) | Structured JSON outputs via Zod, prompt caching on the static Callbook system prompt |
 | TTS              | **ElevenLabs** (`eleven_turbo_v2_5`)     | Sponsored, low-latency, expressive voice for the demo close    |
 | Data ingestion   | CFPB v1 search API + Apify actors        | Free public API + flexible enrichment without scraping infra   |
 | Storage          | `data/seed.json` + in-memory cache       | Deterministic demo, zero infra, recoverable from API outage    |
@@ -226,8 +226,8 @@ Open <http://127.0.0.1:3000>.
 | `APIFY_SEARCH_RESULTS_PER_PAGE`  | optional | Default `5`                                            |
 | `APIFY_SEARCH_MAX_PAGES`         | optional | Default `1`                                            |
 | `APIFY_SEARCH_TIMEOUT_SECONDS`   | optional | Default `60`                                           |
-| `OPENAI_API_KEY`                 | optional | Used for the outreach-pack generator                   |
-| `OPENAI_MODEL`                   | optional | Default `gpt-4o-mini`                                  |
+| `ANTHROPIC_API_KEY`              | demo     | Used for the outreach-pack generator                   |
+| `ANTHROPIC_MODEL`                | optional | Default `claude-opus-4-7`                              |
 | `ELEVENLABS_API_KEY`             | demo     | Required for sponsored TTS (browser fallback otherwise)|
 | `ELEVENLABS_VOICE_ID`            | demo     | The voice persona used at the demo close               |
 | `ELEVENLABS_MODEL_ID`            | optional | Default `eleven_turbo_v2_5`                            |
