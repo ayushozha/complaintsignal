@@ -6,42 +6,35 @@ import {
 } from "./apify";
 import type { Lead, OutreachPack } from "./types";
 
-const DEFAULT_OPENAI_MODEL = "gpt-5.4-mini";
+const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
+
+const CALLBOOK_POSITIONING = `Callbook AI is an AI-powered collections platform.
+- Voice agents indistinguishable from humans, plus WhatsApp, SMS, and email channels under one orchestration layer.
+- Claims 50-70% right-party contactability.
+- SOC 2 compliant; ships full call recording and audit trail by default.
+- Sells to fintech lenders, BNPL, subprime auto, student loan servicers, private-label card issuers, and consumer installment lenders.
+- Buyer is typically VP Collections, Head of Servicing, or VP Customer / Contact Center Operations.
+- Competitive set: Salient, Prodigal, Cresta, Skit.ai, WIZ.ai. Differentiation is multichannel orchestration + voice quality + SOC 2.`;
 
 let openaiClient: OpenAI | null = null;
 
 export async function generateOutreachPack(lead: Lead): Promise<{
   pack: OutreachPack;
-  source: "apify" | "openai" | "template";
+  source: "openai" | "openai+apify" | "template";
   model: string;
   warning?: string;
 }> {
+  let apifyEvidence: ApifySearchEvidence[] = [];
   let apifyWarning: string | undefined;
 
   if (hasApifyConfig()) {
     try {
-      const evidence = await fetchLeadSearchEvidence(lead);
-      return {
-        pack: apifyOutreachPack(lead, evidence),
-        source: "apify",
-        model: process.env.APIFY_GOOGLE_SEARCH_ACTOR || "apify~google-search-scraper",
-        warning:
-          evidence.length > 0
-            ? undefined
-            : "Apify returned no search evidence; generated from CFPB lead data."
-      };
+      apifyEvidence = await fetchLeadSearchEvidence(lead);
     } catch (error) {
       apifyWarning =
         error instanceof Error
-          ? `Apify fallback: ${error.message}`
-          : "Apify fallback: search failed.";
-
-      return {
-        pack: templateOutreachPack(lead),
-        source: "template",
-        model: process.env.APIFY_GOOGLE_SEARCH_ACTOR || "apify~google-search-scraper",
-        warning: apifyWarning
-      };
+          ? `Apify enrichment failed: ${error.message}`
+          : "Apify enrichment failed.";
     }
   }
 
@@ -50,12 +43,12 @@ export async function generateOutreachPack(lead: Lead): Promise<{
 
   if (!apiKey) {
     return {
-      pack: templateOutreachPack(lead),
+      pack: templateOutreachPack(lead, apifyEvidence),
       source: "template",
       model,
       warning:
         apifyWarning ??
-        "APIFY_API_TOKEN and OPENAI_API_KEY are not set; returned deterministic template output."
+        "OPENAI_API_KEY is not set; returned deterministic template output."
     };
   }
 
@@ -66,15 +59,51 @@ export async function generateOutreachPack(lead: Lead): Promise<{
       input: [
         {
           role: "system",
-          content:
-            "You write concise, evidence-grounded B2B outbound for Callbook AI. Return only JSON that matches the schema."
+          content: `You are a senior B2B outbound writer for Callbook AI's GTM team. You write evidence-grounded outreach for fintech lenders. Every claim must trace to a CFPB datapoint or a public search snippet provided in the user payload. Prefer specifics (numbers, borrower phrases) over adjectives. Reference Callbook's actual product features (multichannel orchestration, 50-70% contactability, SOC 2 + audit trail, voice quality). Never invent statistics. Return only JSON matching the provided schema.\n\n${CALLBOOK_POSITIONING}`
         },
         {
           role: "user",
           content: JSON.stringify({
-            product:
-              "Callbook AI voice agents for collections, borrower follow-up, reminders, routing, and servicing capacity relief.",
-            lead
+            instructions:
+              "Generate the outbound pack for this lead. Lead with the strongest borrower-voice evidence (contactability > multichannel > compliance > volume). Tie every channel back to a Callbook product feature. The voice_pitch_script will be rendered by an AI voice agent; keep it conversational, under 35 seconds, and end with a soft ask.",
+            callbook_product: CALLBOOK_POSITIONING,
+            lead: {
+              company: lead.company,
+              segment: lead.segment,
+              decision_maker: lead.decisionMaker,
+              lead_score: lead.leadScore,
+              callbook_fit: lead.callbookFit,
+              recent_complaint_count: lead.recentCount,
+              previous_complaint_count: lead.previousCount,
+              spike_percent: lead.spikePercent,
+              top_issues: lead.issueSummary,
+              multichannel_pain_rate: lead.multichannelPainRate,
+              contactability_pain_rate: lead.contactabilityPainRate,
+              compliance_heat_rate: lead.complianceHeatRate,
+              debt_collection_share: lead.debtCollectionShare,
+              product_map: lead.productMap.entries.map((entry) => ({
+                feature: entry.feature,
+                label: entry.label,
+                match_rate: entry.matchRate,
+                evidence_phrases: entry.evidencePhrases
+              })),
+              receipt: lead.receipt
+                ? {
+                    product: lead.receipt.product,
+                    issue: lead.receipt.issue,
+                    sub_issue: lead.receipt.subIssue,
+                    narrative: lead.receipt.narrative.slice(0, 1200),
+                    timely: lead.receipt.timely,
+                    company_response: lead.receipt.companyResponse,
+                    date_received: lead.receipt.dateReceived
+                  }
+                : null
+            },
+            apify_search_evidence: apifyEvidence.slice(0, 4).map((item) => ({
+              title: item.title,
+              url: item.url,
+              description: item.description
+            }))
           })
         }
       ],
@@ -84,21 +113,22 @@ export async function generateOutreachPack(lead: Lead): Promise<{
     });
 
     const outputText = readResponseText(response);
+    const pack = JSON.parse(outputText) as OutreachPack;
 
     return {
-      pack: JSON.parse(outputText) as OutreachPack,
-      source: "openai",
+      pack,
+      source: apifyEvidence.length > 0 ? "openai+apify" : "openai",
       model,
       warning: apifyWarning
     };
   } catch (error) {
     const openAiWarning =
       error instanceof Error
-        ? `OpenAI fallback failed: ${error.message}`
-        : "OpenAI fallback failed.";
+        ? `OpenAI generation failed: ${error.message}`
+        : "OpenAI generation failed.";
 
     return {
-      pack: templateOutreachPack(lead),
+      pack: templateOutreachPack(lead, apifyEvidence),
       source: "template",
       model,
       warning: [apifyWarning, openAiWarning].filter(Boolean).join(" ")
@@ -138,36 +168,17 @@ function readResponseText(response: OpenAI.Responses.Response): string {
   return text;
 }
 
-export function templateOutreachPack(lead: Lead): OutreachPack {
+export function templateOutreachPack(
+  lead: Lead,
+  evidence: ApifySearchEvidence[] = []
+): OutreachPack {
+  const topProduct = lead.productMap.entries[0];
+  const productLabel = topProduct?.label ?? "Callbook's multichannel orchestration";
+  const productLine = topProduct?.description ?? "Callbook's voice agents handle borrower follow-up, payment reminders, and routing while keeping servicing teams on exceptions.";
+
   const receiptLine = lead.receipt
     ? `A recent CFPB complaint cites ${lead.receipt.issue.toLowerCase()} in ${lead.receipt.product.toLowerCase()}.`
     : "Recent CFPB complaint activity points to servicing friction.";
-
-  return {
-    lead_score: lead.leadScore,
-    why_now: lead.whyNow,
-    pain_hypothesis: lead.painHypothesis,
-    callbook_angle:
-      "Callbook AI voice agents can absorb borrower follow-up, payment reminders, and first-pass routing while keeping servicing teams focused on exceptions.",
-    decision_maker: lead.decisionMaker,
-    email: {
-      subject: `Reducing borrower follow-up pressure at ${lead.company}`,
-      body: `Hi - noticed ${lead.company} has ${lead.recentCount} public CFPB complaints in the last 90 days. ${receiptLine}\n\nCallbook helps collections and servicing teams use AI voice agents for borrower reminders, follow-up, and routing, so human agents spend time on the cases that need judgment.\n\nWorth comparing notes on where voice automation could take pressure off your team this quarter?`
-    },
-    linkedin_dm: `${lead.company} showed a fresh CFPB servicing signal: ${lead.whyNow} Callbook helps teams turn that kind of follow-up load into AI voice workflows. Open to a quick compare?`,
-    call_script_30s: `Hi, this is Callbook. I noticed ${lead.company} has a fresh CFPB complaint signal around servicing and borrower follow-up. We help collections teams use AI voice agents for payment reminders, routing, and status checks. Is improving borrower reachability on your team radar this quarter?`,
-    voice_pitch_script: `Hi, this is Callbook. We noticed ${lead.company} is showing a fresh public signal in CFPB complaints around servicing friction. Callbook voice agents can handle borrower follow-up, payment reminders, and routing so your collections team can focus on the higher judgment cases. Would it be worth a short conversation this week?`,
-    crm_note: `${lead.company}: score ${lead.leadScore}. ${lead.whyNow} Suggested persona: ${lead.decisionMaker}.`
-  };
-}
-
-function apifyOutreachPack(
-  lead: Lead,
-  evidence: ApifySearchEvidence[]
-): OutreachPack {
-  const receiptLine = lead.receipt
-    ? `A CFPB receipt cites ${lead.receipt.issue.toLowerCase()} in ${lead.receipt.product.toLowerCase()}.`
-    : "CFPB activity points to borrower servicing friction.";
 
   const evidenceLine = buildEvidenceLine(evidence);
   const contextLine = [receiptLine, evidenceLine].filter(Boolean).join(" ");
@@ -176,17 +187,16 @@ function apifyOutreachPack(
     lead_score: lead.leadScore,
     why_now: lead.whyNow,
     pain_hypothesis: lead.painHypothesis,
-    callbook_angle:
-      "Callbook AI voice agents can absorb borrower follow-up, payment reminders, and first-pass routing while keeping servicing teams focused on exceptions.",
+    callbook_angle: productLine,
     decision_maker: lead.decisionMaker,
     email: {
-      subject: `Public servicing pressure at ${lead.company}`,
-      body: `Hi - I was looking at public borrower-service signals for ${lead.company}. ${contextLine}\n\nThat usually creates repetitive follow-up work: payment reminders, status calls, routing, and escalation triage.\n\nCallbook helps servicing and collections teams move that load into AI voice workflows while keeping complex cases with human agents.\n\nWorth comparing where voice automation could remove pressure from your team this quarter?`
+      subject: `${lead.company}: closing the borrower-contactability gap`,
+      body: `Hi - I was looking at public CFPB signals for ${lead.company}. ${contextLine}\n\nThe pattern that stands out: ${productLabel.toLowerCase()}. ${productLine}\n\nCallbook is SOC 2 compliant, ships full call recording, and pairs voice agents with WhatsApp / SMS / email so the next channel is automatic when one fails.\n\nWorth a 15-minute compare on where ${lead.company} is leaving contactability on the floor today?`
     },
-    linkedin_dm: `${lead.company} has a fresh public servicing signal: ${lead.whyNow} ${evidenceLine || "CFPB data is already enough to see borrower follow-up pressure."} Callbook turns this kind of follow-up load into AI voice workflows. Open to a quick compare?`,
-    call_script_30s: `Hi, this is Callbook. I noticed public CFPB and web signals around borrower servicing pressure at ${lead.company}. We help collections and servicing teams use AI voice agents for payment reminders, routing, and status checks, so reps can focus on exceptions. Is reducing repetitive borrower follow-up on your team's radar?`,
-    voice_pitch_script: `Hi, this is Callbook. We noticed ${lead.company} is showing public borrower servicing pressure. ${lead.whyNow} Callbook voice agents can handle borrower follow-up, payment reminders, and routing so your team can focus on higher judgment cases. Would it be worth a short conversation this week?`,
-    crm_note: `${lead.company}: score ${lead.leadScore}. Apify query evidence: ${summarizeEvidence(evidence)} ${lead.whyNow} Suggested persona: ${lead.decisionMaker}.`
+    linkedin_dm: `${lead.company} has a fresh public CFPB pattern: ${lead.whyNow.split(".")[0]}. Callbook AI's multichannel collections platform (voice + WhatsApp + SMS + email, SOC 2) is built to close exactly that gap. Open to a quick compare?`,
+    call_script_30s: `Hi, this is Callbook. I noticed ${lead.company} has ${lead.recentCount.toLocaleString()} CFPB complaints in 90 days, and the borrower narratives keep mentioning failed calls and unreached messages. Callbook is the AI voice + WhatsApp + SMS + email orchestration platform behind 50-70% contactability for collections, with SOC 2 and full call recording out of the box. Is improving right-party contact on your team's roadmap this quarter?`,
+    voice_pitch_script: `Hi - this is Callbook. Quick reason for the call. We pulled CFPB complaints for ${lead.company} and the borrower-voice pattern is clear: missed calls, dead voicemails, and unanswered messages. Callbook is the AI collections platform with voice agents indistinguishable from humans, plus WhatsApp, SMS, and email orchestration. We help lenders like ${lead.company} push right-party contactability into the 50 to 70 percent band, with SOC 2 and full call recording on day one. Worth a 15-minute conversation this week?`,
+    crm_note: `${lead.company} - lead score ${lead.leadScore}, Callbook fit ${lead.callbookFit}. ${lead.whyNow} Top product map: ${lead.productMap.entries.slice(0, 2).map((e) => e.label).join(" | ")}. Persona: ${lead.decisionMaker}.`
   };
 }
 
@@ -202,18 +212,7 @@ function buildEvidenceLine(evidence: ApifySearchEvidence[]): string {
   }
 
   const description = best.description ? `: ${trimSentence(best.description)}` : "";
-  return `Apify search surfaced ${formatEvidenceTitle(best)}${description}.`;
-}
-
-function summarizeEvidence(evidence: ApifySearchEvidence[]): string {
-  if (evidence.length === 0) {
-    return "none";
-  }
-
-  return evidence
-    .slice(0, 3)
-    .map((item) => (isUrlLike(item.title) ? readHostname(item.url) : item.title))
-    .join(" | ");
+  return `Public search surfaced ${formatEvidenceTitle(best)}${description}.`;
 }
 
 function formatEvidenceTitle(item: ApifySearchEvidence): string {

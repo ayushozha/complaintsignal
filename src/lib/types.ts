@@ -38,9 +38,31 @@ export interface ComplaintWindow {
 export interface SignalBreakdown {
   complaintSpike: number;
   collectionsRelevance: number;
-  supportPain: number;
-  slowResponse: number;
-  industryFit: number;
+  multichannelPain: number;
+  contactabilityPain: number;
+  complianceHeat: number;
+  callbookFit: number;
+}
+
+export type CallbookFeature =
+  | "multichannel"
+  | "contactability"
+  | "compliance"
+  | "voice_quality"
+  | "volume";
+
+export interface ProductMapEntry {
+  feature: CallbookFeature;
+  label: string;
+  description: string;
+  matchRate: number;
+  matchCount: number;
+  totalSampled: number;
+  evidencePhrases: string[];
+}
+
+export interface CallbookProductMap {
+  entries: ProductMapEntry[];
 }
 
 export interface Lead {
@@ -50,6 +72,7 @@ export interface Lead {
   segment: string;
   decisionMaker: string;
   leadScore: number;
+  callbookFit: number;
   spikePercent: number;
   recentCount: number;
   previousCount: number;
@@ -61,6 +84,11 @@ export interface Lead {
   recentComplaints: ComplaintRecord[];
   previousComplaints: ComplaintRecord[];
   cfpbUrl: string;
+  productMap: CallbookProductMap;
+  multichannelPainRate: number;
+  contactabilityPainRate: number;
+  complianceHeatRate: number;
+  debtCollectionShare: number;
 }
 
 export interface LeadDataset {

@@ -44,11 +44,14 @@ Sales reps end up cold-emailing lists of "fintech lenders" with a generic pitch.
 
 ## Why This Wins
 
-Three things make ComplaintSignal different from the dozen "AI SDR" tools in the same lane:
+> **ZoomInfo tells you who is a fintech lender. ComplaintSignal tells you which lender's borrowers are publicly accusing them of doing the exact things Callbook's product fixes — and maps each accusation to the Callbook feature that addresses it.**
 
-1. **Causal signal, not static keywords.** We answer *why now*, not *who is in this vertical*. A 106% spike in collections complaints over 90 days is a buying trigger; "fintech, 500–2000 employees" is not.
-2. **Receipts, not vibes.** Every lead links back to the literal CFPB complaint text, the literal review, the literal earnings number. Judges and prospects can verify the claim in two seconds.
-3. **Self-evident GTM logic.** Callbook sells AI for collections. We surface the lenders whose collections operations are *publicly visibly failing*. There is no leap of faith — the buying motion explains itself.
+Four reasons this isn't another AI SDR tool:
+
+1. **Callbook-shaped ICP, not generic fintech.** Every target is hand-picked against Callbook's actual buyer profile (subprime auto, BNPL, student loan servicing, private-label cards, subprime personal loans). No noise companies that won't buy a collections platform.
+2. **Causal signal, not static keywords.** We answer *why now* from CFPB borrower-voice data, not *who's in the vertical*. The signal moves before the buyer's intent shows up anywhere else.
+3. **Receipts, not vibes.** Every product-fit chip cites the literal borrower phrase from the CFPB narrative. Judges and prospects can verify the claim in two seconds.
+4. **Product-map moat.** Each borrower-voice pattern is mapped to a specific Callbook feature it justifies — multichannel orchestration, 50–70% contactability, SOC 2 audit trail, voice-agent quality. The pitch writes itself because the math wrote it.
 
 ---
 
@@ -56,11 +59,12 @@ Three things make ComplaintSignal different from the dozen "AI SDR" tools in the
 
 A live signal board for Callbook's sales team that:
 
-- **Pulls real CFPB complaint data** for ten pre-vetted fintech lenders across debt collection, vehicle loans, payday/personal loans, credit cards, and mortgage products.
-- **Computes a 0–100 lead score** by weighing complaint spikes, collections-relevance, support-pain phrases, slow-response rate, and revenue fit.
-- **Generates a complete outbound pack** per lead in a single LLM call: cold email, LinkedIn DM, 30-second call script, voice-pitch script, CRM note, decision-maker hint, and a "why now" + "pain hypothesis" framing.
-- **Voices the pitch through ElevenLabs** so the rep hears the call before they make it — and so the demo closes with audio in the room, not slides.
-- **Falls back gracefully**: deterministic templates if the LLM is down, browser speech synthesis if ElevenLabs is unreachable, seeded JSON if the CFPB API is slow.
+- **Pulls real CFPB complaint data** for ten hand-picked Callbook-ICP lenders: Credit Acceptance, Westlake, OneMain, Enova (CashNetUSA / NetCredit), Navient, Affirm, Klarna, Synchrony, Bread Financial, Upstart.
+- **Mines borrower narratives** for the patterns that map 1:1 to Callbook's product page — multichannel pain, contactability gaps, compliance heat, voice-agent quality issues — and surfaces literal phrases as receipts.
+- **Computes a 0–100 lead score plus a 0–100 Callbook fit score**, then renders a "Callbook product fit map" panel per lead with per-feature match rates and the borrower phrases that triggered each.
+- **Generates a complete outbound pack** per lead via a single LLM call grounded in (a) the CFPB receipt, (b) Apify public-search evidence, and (c) Callbook's actual product positioning. Output: cold email, LinkedIn DM, 30-second call script, voice-pitch script, CRM note, decision-maker, "why now," "pain hypothesis."
+- **Voices the pitch through ElevenLabs** so the rep hears the call before they make it — and the demo closes with audio in the room.
+- **Falls back gracefully**: deterministic Callbook-language templates if the LLM is down, browser speech synthesis if ElevenLabs is unreachable, seeded JSON if the CFPB API is slow.
 
 ---
 
@@ -91,18 +95,31 @@ A live signal board for Callbook's sales team that:
 2. **Apify enrichment** — Google search actors mining buyer-signal queries (support-delay phrases, collections complaints, hiring posts) for each ranked lead.
 3. **Earnings / 10-Q snippets** — curated quotes per public lender. Charge-off rates, allowance movements, support-volume disclosures — the financial-pain dimension that complements the customer-voice signal.
 
-### Lead-score formula
+### Lead-score formula (Callbook-tuned)
 
 ```
 Total /100 =
-  Complaint spike (90d vs prior 90d):     35 pts
-  Collections-relevance of issues:        25 pts   (debt collection, payment, support)
-  Customer-support pain phrases:          20 pts   (response delays, "couldn't reach")
-  Slow / non-timely company response:     10 pts   (CFPB has this field directly)
-  Industry / revenue fit:                 10 pts
+  Complaint volume + 90d spike:           25 pts
+  Collections relevance (CFPB taxonomy):  20 pts   (debt-collection product share)
+  Multichannel pain rate:                 15 pts   ("called", "voicemail", "no response", "emailed")
+  Right-party contactability gap:         10 pts   ("could not reach", "tried calling", "no one answered")
+  Compliance heat:                        20 pts   (timely=No / "in progress" rate)
+  Callbook product fit (derived):         10 pts   (composite of the four above + volume tier)
 ```
 
-Cap at 100. Rendered as an animated counter in the UI.
+Cap at 100. Each dimension maps directly to a Callbook product feature, so the score *is* the pitch.
+
+### Callbook product fit map
+
+For every lead, ComplaintSignal computes a per-feature match rate from the borrower narratives and surfaces it as a chip in the lead detail. Each chip shows the literal phrases that triggered it.
+
+| Chip | What triggers it | Maps to |
+|---|---|---|
+| **Multichannel orchestration** | % narratives mentioning failed calls, voicemails, unanswered messages | Voice + WhatsApp + SMS + email switching |
+| **Right-party contactability (50–70%)** | % narratives explicitly saying "could not reach" / "tried calling" | Callbook's headline contactability claim |
+| **SOC 2 + audit trail** | % CFPB cases flagged not-timely or "in progress" | Callbook's SOC 2 + full call recording |
+| **Voice agent quality** | % narratives describing rude, scripted, harassing agents | Callbook's "indistinguishable from human" voice |
+| **Collections volume tier** | log-scaled 90d complaint count | Volume justifies AI voice ROI |
 
 ### Outreach pack (single structured LLM call)
 

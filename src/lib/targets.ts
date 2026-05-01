@@ -2,11 +2,43 @@ import type { TargetCompany } from "./types";
 
 export const TARGET_COMPANIES: TargetCompany[] = [
   {
-    id: "capital-one",
-    displayName: "Capital One",
-    cfpbSearchTerm: "Capital One",
-    segment: "Consumer bank and card lender",
-    decisionMaker: "VP Collections or Head of Servicing",
+    id: "credit-acceptance",
+    displayName: "Credit Acceptance",
+    cfpbSearchTerm: "Credit Acceptance",
+    segment: "Subprime auto finance",
+    decisionMaker: "VP Collections / Servicing Operations",
+    industryFit: 10
+  },
+  {
+    id: "westlake",
+    displayName: "Westlake Financial",
+    cfpbSearchTerm: "Westlake Services",
+    segment: "Indirect / subprime auto lending",
+    decisionMaker: "VP Collections / Contact Center Ops",
+    industryFit: 10
+  },
+  {
+    id: "onemain",
+    displayName: "OneMain Financial",
+    cfpbSearchTerm: "OneMain",
+    segment: "Branch-based personal installment loans",
+    decisionMaker: "VP Collections / Contact Center Operations",
+    industryFit: 10
+  },
+  {
+    id: "enova",
+    displayName: "Enova (CashNetUSA / NetCredit)",
+    cfpbSearchTerm: "Enova",
+    segment: "Subprime online consumer + small-biz lending",
+    decisionMaker: "Head of Servicing / Collections Operations",
+    industryFit: 10
+  },
+  {
+    id: "navient",
+    displayName: "Navient",
+    cfpbSearchTerm: "Navient",
+    segment: "Student loan servicing",
+    decisionMaker: "VP Customer Care / Servicing Operations",
     industryFit: 10
   },
   {
@@ -14,55 +46,23 @@ export const TARGET_COMPANIES: TargetCompany[] = [
     displayName: "Affirm",
     cfpbSearchTerm: "Affirm",
     segment: "BNPL and installment lending",
-    decisionMaker: "Head of Servicing or VP Operations",
-    industryFit: 10
-  },
-  {
-    id: "credit-acceptance",
-    displayName: "Credit Acceptance",
-    cfpbSearchTerm: "Credit Acceptance",
-    segment: "Subprime auto finance",
-    decisionMaker: "VP Collections or Servicing Operations",
-    industryFit: 10
-  },
-  {
-    id: "upstart",
-    displayName: "Upstart",
-    cfpbSearchTerm: "Upstart",
-    segment: "AI-enabled personal lending",
-    decisionMaker: "Head of Servicing or Risk Operations",
+    decisionMaker: "Head of Servicing / VP Operations",
     industryFit: 9
   },
   {
-    id: "onemain",
-    displayName: "OneMain Financial",
-    cfpbSearchTerm: "OneMain",
-    segment: "Branch-based consumer installment loans",
-    decisionMaker: "VP Collections or Contact Center Operations",
-    industryFit: 10
-  },
-  {
-    id: "sofi",
-    displayName: "SoFi",
-    cfpbSearchTerm: "SoFi",
-    segment: "Digital bank, student loans, and personal loans",
-    decisionMaker: "Head of Member Operations or Servicing",
-    industryFit: 8
+    id: "klarna",
+    displayName: "Klarna",
+    cfpbSearchTerm: "Klarna",
+    segment: "BNPL and consumer financing",
+    decisionMaker: "Head of Collections / Customer Operations",
+    industryFit: 9
   },
   {
     id: "synchrony",
     displayName: "Synchrony",
     cfpbSearchTerm: "Synchrony",
     segment: "Private-label credit card issuer",
-    decisionMaker: "VP Collections or Customer Care",
-    industryFit: 10
-  },
-  {
-    id: "discover",
-    displayName: "Discover",
-    cfpbSearchTerm: "Discover",
-    segment: "Card issuer and consumer bank",
-    decisionMaker: "VP Collections or Head of Servicing",
+    decisionMaker: "VP Collections / Customer Care",
     industryFit: 10
   },
   {
@@ -70,15 +70,15 @@ export const TARGET_COMPANIES: TargetCompany[] = [
     displayName: "Bread Financial",
     cfpbSearchTerm: "Bread Financial",
     segment: "Credit card and installment financing",
-    decisionMaker: "VP Collections or Customer Operations",
+    decisionMaker: "VP Collections / Customer Operations",
     industryFit: 9
   },
   {
-    id: "goldman-marcus",
-    displayName: "Goldman Sachs Bank USA",
-    cfpbSearchTerm: "Goldman Sachs",
-    segment: "Consumer bank and card partnerships",
-    decisionMaker: "Head of Consumer Servicing",
-    industryFit: 8
+    id: "upstart",
+    displayName: "Upstart",
+    cfpbSearchTerm: "Upstart",
+    segment: "AI-enabled personal lending",
+    decisionMaker: "Head of Servicing / Risk Operations",
+    industryFit: 9
   }
 ];

@@ -30,13 +30,14 @@ type DatasetPayload = LeadDataset & {
 
 type PackApiResponse = {
   pack: OutreachPack;
-  source: "apify" | "openai" | "template";
+  source: "openai" | "openai+apify" | "template";
   model: string;
   warning?: string;
 };
 
 type PackTab = "email" | "linkedin" | "call" | "crm";
 type StatusTone = "idle" | "ok" | "warn" | "error";
+type BillingPeriod = "monthly" | "annual";
 
 const numberFormatter = new Intl.NumberFormat("en-US");
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
@@ -83,17 +84,24 @@ export function ComplaintSignalApp({
   const totals = useMemo(() => {
     const leads = dataset?.leads ?? [];
     const recent = leads.reduce((sum, lead) => sum + lead.recentCount, 0);
+    const narratives = leads.reduce((sum, lead) => sum + lead.recentComplaints.length, 0);
     const averageScore =
       leads.length > 0
         ? Math.round(leads.reduce((sum, lead) => sum + lead.leadScore, 0) / leads.length)
+        : 0;
+    const averageCallbookFit =
+      leads.length > 0
+        ? Math.round(leads.reduce((sum, lead) => sum + lead.callbookFit, 0) / leads.length)
         : 0;
 
     return {
       leads: leads.length,
       recent,
+      narratives,
       averageScore,
+      averageCallbookFit,
       topScore: leads[0]?.leadScore ?? 0,
-      hot: leads.filter((lead) => lead.leadScore >= 60).length
+      hot: leads.filter((lead) => lead.leadScore >= 40).length
     };
   }, [dataset]);
 
@@ -309,7 +317,9 @@ export function ComplaintSignalApp({
           onViewSignals={() => document.getElementById("signal-board")?.scrollIntoView({ behavior: "smooth" })}
         />
 
-        <ScreenLabel id="signal-board" label="screen 02 -- dashboard / signal board" />
+        <PricingSection topLead={selectedLead} onViewSignals={() => document.getElementById("signal-board")?.scrollIntoView({ behavior: "smooth" })} />
+
+        <ScreenLabel id="signal-board" label="screen 03 -- dashboard / signal board" />
         <section className="rounded-[10px] border border-[var(--ink)] bg-white p-3 shadow-[4px_4px_0_var(--ink)]">
           <div className="flex flex-col gap-3 border-b border-[var(--ink)] pb-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
@@ -340,11 +350,13 @@ export function ComplaintSignalApp({
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-4">
-            <Metric label="active leads" value={totals.leads} delta="+3 this week" icon={<Database size={16} />} />
-            <Metric label="hot (60+)" value={totals.hot} delta="+2 since Mon" icon={<Sparkles size={16} />} />
-            <Metric label="complaints tracked" value={numberFormatter.format(totals.recent)} delta="+18% WoW" icon={<FileText size={16} />} />
-            <Metric label="avg score" value={totals.averageScore} delta="ranked / 100" icon={<Gauge size={16} />} />
+            <Metric label="callbook-icp leads" value={totals.leads} delta="curated buyers" icon={<Database size={16} />} />
+            <Metric label="hot (40+)" value={totals.hot} delta="ready to call" icon={<Sparkles size={16} />} />
+            <Metric label="complaints surveilled" value={numberFormatter.format(totals.recent)} delta="last 90 days" icon={<FileText size={16} />} />
+            <Metric label="avg callbook fit" value={totals.averageCallbookFit} delta="product-map match" icon={<Gauge size={16} />} />
           </div>
+
+          <MoatStrip totals={totals} />
 
           <LeadTable
             leads={dataset.leads}
@@ -353,10 +365,10 @@ export function ComplaintSignalApp({
           />
         </section>
 
-        <ScreenLabel id="lead-detail" label="screen 03 -- lead detail" />
+        <ScreenLabel id="lead-detail" label="screen 04 -- lead detail" />
         <LeadDetail lead={selectedLead} dateRange={dateRange} />
 
-        <ScreenLabel id="outreach-pack" label="screen 04 -- outreach pack" />
+        <ScreenLabel id="outreach-pack" label="screen 05 -- outreach pack" />
         <OutreachPackSection
           lead={selectedLead}
           pack={pack}
@@ -399,7 +411,7 @@ function Landing({
         <div className="flex flex-wrap items-center gap-5 text-sm">
           <a href="#signal-board" className="hover:text-[var(--rose)]">Product</a>
           <a href="#lead-detail" className="hover:text-[var(--rose)]">How it works</a>
-          <a href="#outreach-pack" className="hover:text-[var(--rose)]">Pricing</a>
+          <a href="#pricing" className="hover:text-[var(--rose)]">Pricing</a>
           <button
             type="button"
             onClick={onViewSignals}
@@ -410,12 +422,12 @@ function Landing({
         </div>
       </nav>
 
-      <div className="grid gap-8 py-14 lg:grid-cols-[0.9fr_1.1fr] lg:items-end xl:gap-12">
+      <div className="grid gap-8 py-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-end xl:gap-12">
         <div>
           <p className="font-mono text-xs font-bold uppercase tracking-[0.18em] text-[var(--rose)]">
             For Callbook AE teams
           </p>
-          <h1 className="mt-4 max-w-3xl text-5xl font-black leading-[0.9] text-[var(--ink)] sm:text-7xl xl:text-8xl">
+          <h1 className="mt-4 max-w-3xl text-5xl font-black leading-[0.9] text-[var(--ink)] sm:text-6xl xl:text-7xl">
             Find Buyers Bleeding In Public This Week
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--muted)] sm:text-lg">
@@ -446,6 +458,224 @@ function Landing({
   );
 }
 
+function PricingSection({
+  topLead,
+  onViewSignals
+}: {
+  topLead: Lead;
+  onViewSignals: () => void;
+}) {
+  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>("annual");
+  const annual = billingPeriod === "annual";
+
+  const tiers = [
+    {
+      name: "Signal Board",
+      price: annual ? 790 : 990,
+      subline: "for founder-led sales teams",
+      angle: "Stop guessing which lenders are in-market.",
+      badge: "start here",
+      features: [
+        "Daily CFPB complaint scans for target lenders",
+        "Lead score, spike, issue, and receipt views",
+        "Apify public-evidence search per account",
+        "Exportable signal board for AE standup"
+      ],
+      cta: "View signals"
+    },
+    {
+      name: "Outbound Engine",
+      price: annual ? 1600 : 2000,
+      subline: "for AEs booking lender meetings",
+      angle: "Turn public pain into a sourced outreach pack.",
+      badge: "most useful",
+      features: [
+        "Everything in Signal Board",
+        "Email, LinkedIn, call script, and CRM note per lead",
+        "Voice pitch fallback for live demos",
+        "Priority refresh on named lender lists"
+      ],
+      cta: "Generate packs"
+    },
+    {
+      name: "Revenue Desk",
+      price: annual ? 3800 : 4800,
+      subline: "for teams running vertical GTM",
+      angle: "A managed buyer-intent desk for Callbook pipeline.",
+      badge: "scale",
+      features: [
+        "Everything in Outbound Engine",
+        "Custom lender universe and segment filters",
+        "Weekly account brief with top movement",
+        "AE routing notes and objection angles"
+      ],
+      cta: "Build pipeline"
+    }
+  ];
+
+  return (
+    <>
+      <ScreenLabel id="pricing" label="screen 02 -- pricing / value" />
+      <section className="rounded-[14px] border border-[var(--ink)] bg-white p-4 shadow-[6px_6px_0_var(--ink)] sm:p-5">
+        <div className="grid gap-5 border-b border-[var(--ink)] pb-5 lg:grid-cols-[1fr_auto] lg:items-end">
+          <div>
+            <p className="font-mono text-xs font-bold uppercase tracking-[0.18em] text-[var(--rose)]">
+              priced around pipeline, not seats
+            </p>
+            <h2 className="mt-3 max-w-4xl text-4xl font-black leading-[0.95] text-[var(--ink)] sm:text-6xl">
+              Pay for accounts already raising their hand.
+            </h2>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--muted)]">
+              ComplaintSignal is priced to be covered by one serious lender conversation. You get the signal, the receipt, and the outbound pack before public pain goes stale.
+            </p>
+          </div>
+
+          <div className="flex w-fit rounded-[10px] border border-[var(--ink)] bg-[var(--paper)] p-1 shadow-[3px_3px_0_var(--ink)]">
+            <button
+              type="button"
+              onClick={() => setBillingPeriod("monthly")}
+              className={`rounded-md px-4 py-2 font-mono text-xs font-bold uppercase ${
+                billingPeriod === "monthly" ? "bg-white text-[var(--ink)] shadow-[2px_2px_0_var(--ink)]" : "text-[var(--muted)]"
+              }`}
+            >
+              monthly
+            </button>
+            <button
+              type="button"
+              onClick={() => setBillingPeriod("annual")}
+              className={`rounded-md px-4 py-2 font-mono text-xs font-bold uppercase ${
+                billingPeriod === "annual" ? "bg-[var(--ink)] text-white shadow-[2px_2px_0_var(--rose)]" : "text-[var(--muted)]"
+              }`}
+            >
+              annual
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+          <div className="rounded-[12px] border border-[var(--ink)] bg-[var(--lemon)] p-5 shadow-[4px_4px_0_var(--ink)]">
+            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--muted)]">
+              why the budget works
+            </p>
+            <div className="mt-6 space-y-4">
+              <PricingProof label="Current proof account" value={topLead.company} />
+              <PricingProof label="Public complaint load" value={`${numberFormatter.format(topLead.recentCount)} / 90d`} />
+              <PricingProof label="Buying trigger" value={`${topLead.leadScore}/100 lead score`} />
+            </div>
+            <div className="mt-6 rounded-[10px] border border-[var(--ink)] bg-white p-4">
+              <p className="text-xl font-black leading-tight">
+                If one signal becomes one qualified lender meeting, the month is already justified.
+              </p>
+              <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
+                The offer is not more data. It is an unfairly timed reason for an AE to reach out with proof.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-3">
+            {tiers.map((tier) => (
+              <PricingCard
+                key={tier.name}
+                tier={tier}
+                annual={annual}
+                onPrimaryAction={tier.name === "Signal Board" ? onViewSignals : undefined}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
+
+function PricingProof({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[10px] border border-[var(--ink)] bg-white p-4 shadow-[3px_3px_0_var(--ink)]">
+      <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">
+        {label}
+      </div>
+      <div className="mt-2 text-2xl font-black leading-tight">{value}</div>
+    </div>
+  );
+}
+
+function PricingCard({
+  tier,
+  annual,
+  onPrimaryAction
+}: {
+  tier: {
+    name: string;
+    price: number;
+    subline: string;
+    angle: string;
+    badge: string;
+    features: string[];
+    cta: string;
+  };
+  annual: boolean;
+  onPrimaryAction?: () => void;
+}) {
+  const highlighted = tier.name === "Outbound Engine";
+
+  return (
+    <article
+      className={`flex min-h-[460px] flex-col rounded-[12px] border border-[var(--ink)] p-5 shadow-[4px_4px_0_var(--ink)] ${
+        highlighted ? "bg-[var(--ink)] text-white" : "bg-white text-[var(--ink)]"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className={`font-mono text-[11px] font-bold uppercase tracking-[0.16em] ${highlighted ? "text-white/60" : "text-[var(--muted)]"}`}>
+            {tier.badge}
+          </p>
+          <h3 className="mt-3 text-3xl font-black leading-none">{tier.name}</h3>
+          <p className={`mt-2 text-sm ${highlighted ? "text-white/70" : "text-[var(--muted)]"}`}>
+            {tier.subline}
+          </p>
+        </div>
+        {highlighted ? (
+          <span className="rounded-md bg-[var(--rose)] px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-white">
+            best
+          </span>
+        ) : null}
+      </div>
+
+      <div className="mt-6">
+        <span className="text-5xl font-black">${numberFormatter.format(tier.price)}</span>
+        <span className={`ml-2 font-mono text-xs ${highlighted ? "text-white/60" : "text-[var(--muted)]"}`}>
+          / mo {annual ? "billed yearly" : "monthly"}
+        </span>
+      </div>
+      <p className={`mt-4 min-h-14 text-sm font-bold leading-6 ${highlighted ? "text-white" : "text-[var(--ink)]"}`}>
+        {tier.angle}
+      </p>
+
+      <div className="mt-5 space-y-3">
+        {tier.features.map((feature) => (
+          <div key={feature} className="flex gap-3 text-sm leading-5">
+            <Check size={16} className={highlighted ? "mt-0.5 shrink-0 text-[var(--rose)]" : "mt-0.5 shrink-0 text-[var(--blue)]"} />
+            <span className={highlighted ? "text-white/78" : "text-[var(--muted)]"}>{feature}</span>
+          </div>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={onPrimaryAction}
+        className={`mt-auto inline-flex h-11 items-center justify-center gap-2 rounded-md border px-4 font-mono text-sm font-bold transition hover:-translate-y-0.5 ${
+          highlighted
+            ? "border-white/30 bg-white text-[var(--ink)] hover:bg-[var(--lemon)]"
+            : "border-[var(--ink)] bg-[var(--ink)] text-white shadow-[3px_3px_0_var(--rose)] hover:bg-[var(--rose)]"
+        }`}
+      >
+        {tier.cta}
+        <ArrowRight size={15} />
+      </button>
+    </article>
+  );
+}
+
 function HeroProof({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="rounded-md border border-[var(--ink)] bg-white px-3 py-3 shadow-[2px_2px_0_var(--ink)]">
@@ -460,9 +690,12 @@ function HeroProof({ label, value }: { label: string; value: string | number }) 
 function HeroSignalVisual({ lead }: { lead: Lead }) {
   const issue = lead.issueSummary[0] ?? "Payment friction";
   const scorePercent = Math.max(0, Math.min(100, lead.leadScore));
+  const visualWhyNow = `${numberFormatter.format(
+    lead.recentCount
+  )} fresh CFPB complaints in 90 days, with ${issue.toLowerCase()} leading the signal.`;
 
   return (
-    <div className="relative min-h-[560px] overflow-hidden rounded-[14px] border border-[var(--ink)] bg-white p-4 shadow-[6px_6px_0_var(--ink)] sm:p-5">
+    <div className="relative min-h-[520px] overflow-hidden rounded-[14px] border border-[var(--ink)] bg-white p-4 shadow-[6px_6px_0_var(--ink)] sm:p-5">
       <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(17,17,17,0.045)_1px,transparent_1px),linear-gradient(180deg,rgba(17,17,17,0.045)_1px,transparent_1px)] bg-[size:34px_34px]" />
       <div className="relative flex items-center justify-between border-b border-[var(--ink)] pb-4">
         <div>
@@ -486,7 +719,7 @@ function HeroSignalVisual({ lead }: { lead: Lead }) {
               </p>
               <FileText size={16} className="text-[var(--rose)]" />
             </div>
-            <p className="mt-3 text-sm font-bold leading-6">{lead.whyNow}</p>
+            <p className="mt-3 text-sm font-bold leading-6">{visualWhyNow}</p>
           </div>
 
           <div className="rounded-[10px] border border-[var(--ink)] bg-white p-4 shadow-[4px_4px_0_var(--ink)]">
@@ -497,7 +730,9 @@ function HeroSignalVisual({ lead }: { lead: Lead }) {
               <Sparkles size={16} className="text-[var(--blue)]" />
             </div>
             <div className="mt-4 rounded-md border border-[var(--ink)] bg-[var(--mint)] p-3">
-              <p className="font-mono text-xs font-bold">"{lead.company}" CFPB complaint</p>
+                <p className="font-mono text-xs font-bold">
+                  &quot;{lead.company}&quot; CFPB complaint
+                </p>
               <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
                 Search result context, public complaint receipts, issue clusters, and buyer timing.
               </p>
@@ -628,8 +863,13 @@ function LeadTable({
             <span className="font-mono text-sm font-bold text-[var(--rose)] max-md:hidden">
               {formatSpike(lead.spikePercent)}
             </span>
-            <span className="w-fit rounded-md bg-[var(--score)] px-3 py-1 font-mono text-xs font-bold text-white">
-              {lead.leadScore}
+            <span className="flex flex-col items-start gap-1">
+              <span className="w-fit rounded-md bg-[var(--score)] px-3 py-1 font-mono text-xs font-bold text-white">
+                {lead.leadScore}
+              </span>
+              <span className="hidden w-fit rounded border border-[var(--ink)] bg-[var(--paper)] px-2 font-mono text-[10px] text-[var(--muted)] md:inline-block">
+                fit {lead.callbookFit}
+              </span>
             </span>
             <span className="text-sm text-[var(--muted)] max-md:hidden">
               {lead.issueSummary[0] ?? "Complaint pattern"}
@@ -682,15 +922,18 @@ function LeadDetail({ lead, dateRange }: { lead: Lead; dateRange: string }) {
         </div>
       </div>
 
+      <CallbookProductPanel lead={lead} />
+
       <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="rounded-[10px] border border-[var(--ink)] bg-white p-5 shadow-[4px_4px_0_var(--ink)]">
           <p className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-[var(--muted)]">Score breakdown</p>
           <div className="mt-5 space-y-4">
-            <BreakdownBar label="Complaint spike / pressure" value={lead.breakdown.complaintSpike} max={35} />
-            <BreakdownBar label="Collections relevance" value={lead.breakdown.collectionsRelevance} max={25} />
-            <BreakdownBar label="Support pain phrases" value={lead.breakdown.supportPain} max={20} />
-            <BreakdownBar label="Slow company response" value={lead.breakdown.slowResponse} max={10} />
-            <BreakdownBar label="Industry / revenue fit" value={lead.breakdown.industryFit} max={10} />
+            <BreakdownBar label="Complaint volume + spike" value={lead.breakdown.complaintSpike} max={25} />
+            <BreakdownBar label="Collections relevance" value={lead.breakdown.collectionsRelevance} max={20} />
+            <BreakdownBar label="Multichannel pain" value={lead.breakdown.multichannelPain} max={15} />
+            <BreakdownBar label="Right-party contactability gap" value={lead.breakdown.contactabilityPain} max={10} />
+            <BreakdownBar label="Compliance heat (timely=No)" value={lead.breakdown.complianceHeat} max={20} />
+            <BreakdownBar label="Callbook product fit" value={lead.breakdown.callbookFit} max={10} />
           </div>
         </div>
 
@@ -1009,6 +1252,116 @@ function BrandMark() {
   return <span className="h-2 w-2 bg-[var(--rose)]" aria-hidden="true" />;
 }
 
+function MoatStrip({
+  totals
+}: {
+  totals: {
+    leads: number;
+    recent: number;
+    narratives: number;
+    averageCallbookFit: number;
+  };
+}) {
+  return (
+    <div className="mt-4 rounded-[10px] border border-[var(--ink)] bg-[var(--ink)] p-4 text-white shadow-[4px_4px_0_var(--rose)]">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-white/40 bg-[var(--rose)]">
+            <Sparkles size={16} />
+          </span>
+          <div>
+            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-white/60">
+              why this is not a phonebook
+            </p>
+            <p className="mt-1 max-w-2xl text-sm leading-6">
+              ZoomInfo tells you who is a fintech lender. ComplaintSignal tells you which lender&apos;s borrowers are publicly accusing them of doing the exact things Callbook&apos;s product fixes - and maps each accusation to the Callbook feature that addresses it.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 lg:w-[420px]">
+          <MoatStat label="lenders monitored" value={totals.leads.toString()} />
+          <MoatStat label="cfpb complaints" value={numberFormatter.format(totals.recent)} />
+          <MoatStat label="narratives mined" value={numberFormatter.format(totals.narratives)} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MoatStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-white/30 bg-white/5 px-3 py-2">
+      <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/60">
+        {label}
+      </div>
+      <div className="mt-1 text-lg font-black">{value}</div>
+    </div>
+  );
+}
+
+function CallbookProductPanel({ lead }: { lead: Lead }) {
+  const entries = lead.productMap.entries.slice(0, 4);
+
+  return (
+    <div className="rounded-[10px] border border-[var(--ink)] bg-white p-5 shadow-[4px_4px_0_var(--ink)]">
+      <div className="flex flex-col gap-2 border-b border-[var(--ink)] pb-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-[var(--muted)]">
+            Callbook product fit map
+          </p>
+          <p className="mt-1 text-base font-bold leading-6">
+            Each borrower-voice pattern below mapped to a Callbook feature that addresses it.
+          </p>
+        </div>
+        <div className="rounded-md border border-[var(--ink)] bg-[var(--rose)] px-3 py-2 text-center text-white">
+          <div className="text-2xl font-black">{lead.callbookFit}</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.14em]">callbook fit / 100</div>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {entries.map((entry) => (
+          <ProductMapChip key={entry.feature} entry={entry} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProductMapChip({
+  entry
+}: {
+  entry: Lead["productMap"]["entries"][number];
+}) {
+  const pct = Math.round(entry.matchRate * 100);
+  const phrases = entry.evidencePhrases.slice(0, 4);
+
+  return (
+    <div className="rounded-md border border-[var(--ink)] bg-[var(--paper)] p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--ink)]">
+          {entry.label}
+        </span>
+        <span className="rounded border border-[var(--ink)] bg-white px-2 py-0.5 font-mono text-[11px] font-bold text-[var(--rose)]">
+          {pct}%
+        </span>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-[var(--ink)]">{entry.description}</p>
+      {phrases.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {phrases.map((phrase) => (
+            <span
+              key={phrase}
+              className="rounded border border-[var(--ink)] bg-white px-2 py-0.5 font-mono text-[10px] text-[var(--muted)]"
+            >
+              &quot;{phrase}&quot;
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ScreenLabel({ label, id }: { label: string; id?: string }) {
   return (
     <div id={id} className="pb-3 pt-6 font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-[var(--muted)]">
@@ -1042,14 +1395,14 @@ function formatPackSource(
   model: string
 ): string {
   if (source === "openai") {
-    return model;
+    return `${model} (LLM)`;
   }
 
-  if (source === "apify") {
-    return "Apify search";
+  if (source === "openai+apify") {
+    return `${model} (LLM + Apify search evidence)`;
   }
 
-  return "template";
+  return "deterministic template";
 }
 
 function formatDate(value: string): string {
