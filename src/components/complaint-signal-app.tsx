@@ -30,7 +30,7 @@ type DatasetPayload = LeadDataset & {
 
 type PackApiResponse = {
   pack: OutreachPack;
-  source: "claude" | "claude+apify" | "template";
+  source: "apify" | "claude" | "claude+apify" | "template";
   model: string;
   warning?: string;
 };
@@ -1463,6 +1463,10 @@ function formatPackSource(
 
   if (source === "claude+apify") {
     return `${model} (Claude + Apify search evidence)`;
+  }
+
+  if (source === "apify") {
+    return `${model} (Apify evidence + deterministic copy)`;
   }
 
   return "deterministic template";

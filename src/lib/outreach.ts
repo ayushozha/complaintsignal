@@ -10,6 +10,8 @@ import type { Lead, OutreachPack } from "./types";
 
 const DEFAULT_MODEL = "claude-opus-4-7";
 const MAX_TOKENS = 4096;
+const APIFY_TEMPLATE_MODEL = "apify-google-search-template";
+const CFPB_TEMPLATE_MODEL = "cfpb-template";
 
 const CALLBOOK_POSITIONING = `Callbook AI is an AI-powered collections platform.
 - Voice agents indistinguishable from humans, plus WhatsApp, SMS, and email channels under one orchestration layer.
@@ -50,7 +52,7 @@ function getClient(apiKey: string): Anthropic {
 
 export async function generateOutreachPack(lead: Lead): Promise<{
   pack: OutreachPack;
-  source: "claude" | "claude+apify" | "template";
+  source: "apify" | "claude" | "claude+apify" | "template";
   model: string;
   warning?: string;
 }> {
@@ -70,15 +72,18 @@ export async function generateOutreachPack(lead: Lead): Promise<{
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   const model = process.env.ANTHROPIC_MODEL || DEFAULT_MODEL;
+  const hasApifyEvidence = apifyEvidence.length > 0;
 
   if (!apiKey) {
     return {
       pack: templateOutreachPack(lead, apifyEvidence),
-      source: "template",
-      model,
+      source: hasApifyEvidence ? "apify" : "template",
+      model: hasApifyEvidence ? APIFY_TEMPLATE_MODEL : CFPB_TEMPLATE_MODEL,
       warning:
         apifyWarning ??
-        "ANTHROPIC_API_KEY is not set; returned deterministic template output."
+        (hasApifyEvidence
+          ? undefined
+          : "ANTHROPIC_API_KEY is not set and Apify returned no evidence; returned CFPB-only template output.")
     };
   }
 
@@ -155,7 +160,7 @@ export async function generateOutreachPack(lead: Lead): Promise<{
 
     return {
       pack: parsed as OutreachPack,
-      source: apifyEvidence.length > 0 ? "claude+apify" : "claude",
+      source: hasApifyEvidence ? "claude+apify" : "claude",
       model,
       warning: apifyWarning
     };
@@ -167,8 +172,8 @@ export async function generateOutreachPack(lead: Lead): Promise<{
 
     return {
       pack: templateOutreachPack(lead, apifyEvidence),
-      source: "template",
-      model,
+      source: hasApifyEvidence ? "apify" : "template",
+      model: hasApifyEvidence ? APIFY_TEMPLATE_MODEL : CFPB_TEMPLATE_MODEL,
       warning: [apifyWarning, claudeWarning].filter(Boolean).join(" ")
     };
   }
